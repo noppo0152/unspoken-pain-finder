@@ -10,20 +10,8 @@ from typing import Optional
 conn = sqlite3.connect('user_data.db')
 c = conn.cursor()
 
-def add_plan_column():
-    """usersテーブルにplan列を追加（既に存在する場合は何もしない）"""
-    try:
-        # 新規ユーザーはデフォルトで"free"プラン
-        c.execute('ALTER TABLE users ADD COLUMN plan TEXT DEFAULT "free"')
-        conn.commit()
-    except sqlite3.OperationalError as e:
-        # すでにplan列が存在する場合は無視
-        if "duplicate column name" not in str(e):
-            raise e
-
-add_plan_column() # ユーザーテーブルにplan列の存在を保証
-
-# ユーザーテーブルを作成 (初回実行時のみ)
+# 1. ユーザーテーブルを最初に作成する (存在しなければ)
+#    → これで、後続のALTER TABLE操作（plan列の追加）が安全になる
 c.execute('''
     CREATE TABLE IF NOT EXISTS users (
         username TEXT PRIMARY KEY,
@@ -32,6 +20,22 @@ c.execute('''
     )
 ''')
 conn.commit()
+
+# 2. テーブル作成後に、plan列を追加する関数を定義
+def add_plan_column():
+    """usersテーブルにplan列を追加（既に存在する場合は何もしない）"""
+    try:
+        # 新規ユーザーはデフォルトで"free"プラン
+        c.execute('ALTER TABLE users ADD COLUMN plan TEXT DEFAULT "free"')
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        # すでにplan列が存在する場合は無視 (エラーを握りつぶす)
+        if "duplicate column name" not in str(e):
+            # plan列の追加に失敗した場合のみエラーを再発生させる
+            raise e
+
+# 3. plan列の存在を保証（テーブル作成後なので安全）
+add_plan_column() 
 
 # アイデア保存用のテーブルを作成
 c.execute('''
@@ -48,7 +52,7 @@ conn.commit()
 
 
 # --- 設定 ---
-# ⚠️ デプロイに備え、APIキーを環境変数（Streamlit Secrets）から読み込む形式に戻しました。
+# デプロイ環境のStreamlit SecretsからAPIキーを読み込みます
 api_key = os.getenv("GEMINI_API_KEY") 
 
 if not api_key:
